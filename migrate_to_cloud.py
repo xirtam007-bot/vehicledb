@@ -7,8 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # MongoDB Atlas connection string from environment variables
-#MONGO_URI = os.getenv('MONGO_URI')
-MONGO_URI = "mongodb+srv://johnnyehughes:Johnny5IsAlive!@cluster0.e5fn2.mongodb.net/vehicledb?retryWrites=true&w=majority"
+MONGO_URI = os.getenv('MONGO_URI')
 
 def migrate_to_mongodb():
     """Migrate VIN records from SQLite to MongoDB Atlas"""

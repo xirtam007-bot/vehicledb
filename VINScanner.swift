@@ -2,6 +2,7 @@ import UIKit
 import AVFoundation
 import CoreData
 import Foundation
+import SwiftUI
 
 class VINScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
     weak var delegate: VINScannerDelegate?
@@ -49,6 +50,8 @@ class VINScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
     
     private let apiURL = ProcessInfo.processInfo.environment["API_URL"] ?? "https://your-app-name.onrender.com"
     private let apiKey = ProcessInfo.processInfo.environment["API_KEY"] ?? "your-secret-key-here"
+    
+    private let networkService = VINNetworkService()
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -144,7 +147,7 @@ class VINScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
             
             Task {
                 do {
-                    let response = try await checkVIN(stringValue)
+                    let response = try await networkService.checkVIN(stringValue)
                     processVINResponse(response)
                     delegate?.didFindCode(stringValue)
                 } catch {
@@ -221,29 +224,17 @@ class VINScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
         }
     }
     
-    func checkVIN(_ vin: String) async throws -> VINResponse {
-        guard let url = URL(string: "\(apiURL)/api/check_vin?vin=\(vin)") else {
-            throw URLError(.badURL)
-        }
-        
-        var request = URLRequest(url: url)
-        request.addValue(apiKey, forHTTPHeaderField: "X-API-Key")
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
-        
-        return try JSONDecoder().decode(VINResponse.self, from: data)
-    }
-    
     private func processVINResponse(_ response: VINResponse) {
         if response.found {
             updateStatus("VIN found: \(response.description ?? "")", isSuccess: true)
         } else {
             updateStatus("VIN not found", isSuccess: false)
         }
+    }
+}
+
+struct VINScanner_Previews: PreviewProvider {
+    static var previews: some View {
+        VINScanner()
     }
 } 
