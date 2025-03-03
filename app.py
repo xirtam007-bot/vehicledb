@@ -27,20 +27,27 @@ _mongo_client = None
 def get_mongo_client():
     global _mongo_client
     if _mongo_client is None:
-        _mongo_client = MongoClient(
-            MONGO_URI,
-            serverSelectionTimeoutMS=5000,
-            connectTimeoutMS=5000,
-            socketTimeoutMS=5000,
-            maxPoolSize=50,
-            minPoolSize=10,
-            maxIdleTimeMS=45000,
-            retryWrites=True,
-            w='majority',
-            tls=True,
-            tlsAllowInvalidCertificates=False,
-            tlsCAFile=certifi.where()  # Use system CA certificates
-        )
+        logger.info("Creating new MongoDB client connection")
+        try:
+            _mongo_client = MongoClient(
+                MONGO_URI,
+                serverSelectionTimeoutMS=5000,
+                connectTimeoutMS=5000,
+                socketTimeoutMS=5000,
+                maxPoolSize=50,
+                minPoolSize=10,
+                maxIdleTimeMS=45000,
+                retryWrites=True,
+                w='majority',
+                tls=True,
+                tlsAllowInvalidCertificates=False,
+                tlsCAFile=certifi.where()
+            )
+            # Log server information
+            topology = _mongo_client.topology_description
+            logger.info(f"MongoDB topology type: {topology.topology_type_name}")
+            for server in topology.server_descriptions():
+                logger.info(f"MongoDB server: {server.address}")
     return _mongo_client
 
 def retry_with_backoff(func, max_retries=3):
