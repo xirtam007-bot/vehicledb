@@ -48,6 +48,9 @@ def get_mongo_client():
             logger.info(f"MongoDB topology type: {topology.topology_type_name}")
             for server in topology.server_descriptions():
                 logger.info(f"MongoDB server: {server.address}")
+        except Exception as e:
+            logger.error(f"Failed to create MongoDB client: {str(e)}")
+            raise
     return _mongo_client
 
 def retry_with_backoff(func, max_retries=3):
