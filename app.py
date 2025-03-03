@@ -5,6 +5,9 @@ import os
 from dotenv import load_dotenv
 from functools import wraps
 import logging
+import time
+from pymongo.errors import AutoReconnect
+import certifi
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -18,27 +21,57 @@ app = Flask(__name__)
 MONGO_URI = os.getenv('MONGO_URI')
 API_KEY = os.getenv('API_KEY')
 
+# Global MongoDB client with connection pooling
+_mongo_client = None
+
+def get_mongo_client():
+    global _mongo_client
+    if _mongo_client is None:
+        _mongo_client = MongoClient(
+            MONGO_URI,
+            serverSelectionTimeoutMS=5000,
+            connectTimeoutMS=5000,
+            socketTimeoutMS=5000,
+            maxPoolSize=50,
+            minPoolSize=10,
+            maxIdleTimeMS=45000,
+            retryWrites=True,
+            w='majority',
+            tls=True,
+            tlsAllowInvalidCertificates=False,
+            tlsCAFile=certifi.where()  # Use system CA certificates
+        )
+    return _mongo_client
+
+def retry_with_backoff(func, max_retries=3):
+    """Retry function with exponential backoff"""
+    for attempt in range(max_retries):
+        try:
+            return func()
+        except (errors.ServerSelectionTimeoutError, 
+                errors.ConnectionFailure,
+                errors.NetworkTimeout,
+                AutoReconnect) as e:
+            if attempt == max_retries - 1:
+                logger.error(f"Final retry attempt failed: {str(e)}")
+                raise
+            wait_time = (2 ** attempt) * 0.1  # 0.1s, 0.2s, 0.4s
+            logger.warning(f"Retry attempt {attempt + 1}/{max_retries}. Waiting {wait_time}s")
+            time.sleep(wait_time)
+
 def get_db():
     try:
-        # Add connection timeouts
-        client = MongoClient(
-            MONGO_URI,
-            serverSelectionTimeoutMS=5000,  # 5 second timeout for server selection
-            connectTimeoutMS=5000,          # 5 second timeout for connecting
-            socketTimeoutMS=5000            # 5 second timeout for operations
-        )
-        # Test the connection
-        client.admin.command('ping')
+        client = get_mongo_client()
+        # Test connection with retry
+        def test_connection():
+            client.admin.command('ping')
+            return client.vin_database
+        
+        db = retry_with_backoff(test_connection)
         logger.info("Successfully connected to MongoDB")
-        return client.vin_database
-    except errors.ServerSelectionTimeoutError as e:
-        logger.error(f"MongoDB server selection timeout: {str(e)}")
-        raise
-    except errors.ConnectionFailure as e:
-        logger.error(f"MongoDB connection failure: {str(e)}")
-        raise
+        return db
     except Exception as e:
-        logger.error(f"Failed to connect to MongoDB: {str(e)}")
+        logger.error(f"Failed to connect to MongoDB: {type(e).__name__}: {str(e)}")
         raise
 
 @app.errorhandler(500)
@@ -63,24 +96,25 @@ def require_api_key(f):
 @require_api_key
 def check_vin():
     try:
+        # Log the client IP address
+        client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        logger.info(f"Request from IP: {client_ip}")
+        
         vin = request.args.get('vin')
         if not vin:
             return jsonify({'error': 'No VIN provided'}), 400
             
         logger.info(f"Checking VIN: {vin}")
         
-        try:
+        def query_vin():
             db = get_db()
-            result = db.vin_records.find_one(
+            return db.vin_records.find_one(
                 {'vin_value': vin},
-                max_time_ms=5000  # 5 second timeout for query
+                max_time_ms=5000
             )
-        except (errors.ServerSelectionTimeoutError, errors.ConnectionFailure) as e:
-            logger.error(f"Database connection error: {str(e)}")
-            return jsonify({
-                'error': 'Database connection error',
-                'message': 'Unable to connect to database'
-            }), 503  # Service Unavailable
+        
+        # Use retry logic for the query
+        result = retry_with_backoff(query_vin)
         
         if result:
             logger.info(f"Found VIN: {vin}")
@@ -94,9 +128,10 @@ def check_vin():
     except Exception as e:
         logger.error(f"Error checking VIN: {str(e)}")
         return jsonify({
-            'error': 'Internal server error',
-            'message': str(e)
-        }), 500
+            'error': 'Database connection error',
+            'message': 'Unable to connect to database',
+            'details': str(e)
+        }), 503
 
 @app.route('/api/add_vin', methods=['POST'])
 @require_api_key
