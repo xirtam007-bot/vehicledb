@@ -39,8 +39,8 @@ def check_vin():
     if result:
         return jsonify({
             'found': True,
-            'description': result['description'],
-            'scan_date': result['scan_date']
+            'description': result.get('description'),
+            'scan_date': result.get('scan_date')
         })
     return jsonify({'found': False})
 
@@ -67,6 +67,10 @@ def add_vin():
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/')
+def home():
+    return "VIN Scanner API is running!"
 
 if __name__ == "__main__":
     app.run(debug=True) 
