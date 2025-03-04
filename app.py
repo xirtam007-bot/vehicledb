@@ -39,9 +39,10 @@ def get_mongo_client():
                 maxIdleTimeMS=45000,
                 retryWrites=True,
                 w='majority',
-                ssl=True,
-                ssl_cert_reqs='CERT_REQUIRED',
-                ssl_ca_certs=certifi.where()
+                tls=True,
+                tlsCertificateKeyFile=None,  # Remove if not using client cert
+                tlsCAFile=certifi.where(),
+                tlsAllowInvalidCertificates=False
             )
             # Test connection immediately
             _mongo_client.admin.command('ping')
