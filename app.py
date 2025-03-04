@@ -39,10 +39,12 @@ def get_mongo_client():
                 maxIdleTimeMS=45000,
                 retryWrites=True,
                 w='majority',
-                tls=True,
-                tlsAllowInvalidCertificates=False,
-                tlsCAFile=certifi.where()
+                ssl=True,
+                ssl_cert_reqs='CERT_REQUIRED',
+                ssl_ca_certs=certifi.where()
             )
+            # Test connection immediately
+            _mongo_client.admin.command('ping')
             # Log server information
             topology = _mongo_client.topology_description
             logger.info(f"MongoDB topology type: {topology.topology_type_name}")
@@ -50,6 +52,7 @@ def get_mongo_client():
                 logger.info(f"MongoDB server: {server.address}")
         except Exception as e:
             logger.error(f"Failed to create MongoDB client: {str(e)}")
+            _mongo_client = None
             raise
     return _mongo_client
 
