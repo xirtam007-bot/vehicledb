@@ -1,9 +1,13 @@
 from flask import Flask, request, jsonify
-from pymongo import MongoClient
+from pymongo import MongoClient, errors
 from datetime import datetime
 import os
 from dotenv import load_dotenv
 from functools import wraps
+import certifi
+import logging
+import time
+from pymongo.errors import AutoReconnect
 
 load_dotenv()
 
@@ -13,9 +17,30 @@ app = Flask(__name__)
 MONGO_URI = os.getenv('MONGO_URI')
 API_KEY = os.getenv('API_KEY')
 
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 def get_db():
-    client = MongoClient(MONGO_URI)
-    return client.vin_database
+    try:
+        client = MongoClient(
+            MONGO_URI,
+            serverSelectionTimeoutMS=5000,
+            connectTimeoutMS=5000,
+            socketTimeoutMS=5000,
+            maxPoolSize=50,
+            minPoolSize=10,
+            maxIdleTimeMS=45000,
+            retryWrites=True,
+            w='majority',
+            tls=True,
+            tlsAllowInvalidCertificates=False,
+            tlsCAFile=certifi.where()
+        )
+        return client.vin_database
+    except Exception as e:
+        logger.error(f"Failed to connect to MongoDB: {str(e)}")
+        raise
 
 def require_api_key(f):
     @wraps(f)

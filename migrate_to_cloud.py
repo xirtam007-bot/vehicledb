@@ -3,17 +3,35 @@ from pymongo import MongoClient
 from datetime import datetime
 import os
 from dotenv import load_dotenv
+import certifi
+import logging
 
 load_dotenv()
 
 # MongoDB Atlas connection string from environment variables
 MONGO_URI = os.getenv('MONGO_URI')
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 def migrate_to_mongodb():
     """Migrate VIN records from SQLite to MongoDB Atlas"""
     try:
-        # Connect to MongoDB Atlas
-        client = MongoClient(MONGO_URI)
+        # Connect to MongoDB Atlas with secure settings
+        client = MongoClient(
+            MONGO_URI,
+            serverSelectionTimeoutMS=5000,
+            connectTimeoutMS=5000,
+            socketTimeoutMS=5000,
+            maxPoolSize=50,
+            minPoolSize=10,
+            maxIdleTimeMS=45000,
+            retryWrites=True,
+            w='majority',
+            tls=True,
+            tlsAllowInvalidCertificates=False,
+            tlsCAFile=certifi.where()
+        )
         db = client.vin_database
         vin_collection = db.vin_records
         
