@@ -18,6 +18,8 @@ services:
         value: true
       - key: TZ
         value: UTC
+      - key: PYTHONPATH
+        value: /opt/render/project/src
       - key: SSL_CERT_FILE
         value: /etc/ssl/certs/ca-certificates.crt
       - key: REQUESTS_CA_BUNDLE

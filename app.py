@@ -29,28 +29,32 @@ def get_mongo_client():
     if _mongo_client is None:
         logger.info("Creating new MongoDB client connection")
         try:
+            # Parse connection string first to validate format
             _mongo_client = MongoClient(
                 MONGO_URI,
                 serverSelectionTimeoutMS=5000,
                 connectTimeoutMS=5000,
                 socketTimeoutMS=5000,
-                maxPoolSize=50,
-                minPoolSize=10,
-                maxIdleTimeMS=45000,
-                retryWrites=True,
-                w='majority',
-                tls=True,
-                tlsCertificateKeyFile=None,  # Remove if not using client cert
-                tlsCAFile=certifi.where(),
-                tlsAllowInvalidCertificates=False
+                tlsCAFile=certifi.where()
             )
+            
             # Test connection immediately
             _mongo_client.admin.command('ping')
-            # Log server information
-            topology = _mongo_client.topology_description
-            logger.info(f"MongoDB topology type: {topology.topology_type_name}")
-            for server in topology.server_descriptions():
-                logger.info(f"MongoDB server: {server.address}")
+            
+            # Log topology information safely
+            try:
+                topology = _mongo_client.topology_description
+                logger.info(f"MongoDB topology type: {topology.topology_type_name}")
+                
+                # Safe server logging
+                for server in topology.server_descriptions().values():  # Use .values()
+                    if hasattr(server, 'address'):
+                        logger.info(f"MongoDB server: {server.address}")
+                    else:
+                        logger.warning("Server description missing address attribute")
+            except Exception as log_error:
+                logger.warning(f"Non-critical error logging topology: {str(log_error)}")
+                
         except Exception as e:
             logger.error(f"Failed to create MongoDB client: {str(e)}")
             _mongo_client = None
@@ -181,14 +185,15 @@ def add_vin():
         raise
 
 @app.route('/')
-def home():
+def health_check():
+    """Health check endpoint"""
     try:
-        # Test database connection
-        db = get_db()
+        # Get client and test connection
+        client = get_mongo_client()
+        client.admin.command('ping')
         return jsonify({
             'status': 'healthy',
-            'message': 'VIN Scanner API is running!',
-            'database': 'connected'
+            'message': 'Connected to MongoDB'
         })
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")

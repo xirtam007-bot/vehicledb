@@ -21,26 +21,42 @@ API_KEY = os.getenv('API_KEY')
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def get_db():
-    try:
-        client = MongoClient(
-            MONGO_URI,
-            serverSelectionTimeoutMS=5000,
-            connectTimeoutMS=5000,
-            socketTimeoutMS=5000,
-            maxPoolSize=50,
-            minPoolSize=10,
-            maxIdleTimeMS=45000,
-            retryWrites=True,
-            w='majority',
-            tls=True,
-            tlsAllowInvalidCertificates=False,
-            tlsCAFile=certifi.where()
-        )
-        return client.vin_database
-    except Exception as e:
-        logger.error(f"Failed to connect to MongoDB: {str(e)}")
-        raise
+def get_mongo_client():
+    global _mongo_client
+    if _mongo_client is None:
+        logger.info("Creating new MongoDB client connection")
+        try:
+            # Parse connection string first to validate format
+            _mongo_client = MongoClient(
+                MONGO_URI,
+                serverSelectionTimeoutMS=5000,
+                connectTimeoutMS=5000,
+                socketTimeoutMS=5000,
+                tlsCAFile=certifi.where()
+            )
+            
+            # Test connection immediately
+            _mongo_client.admin.command('ping')
+            
+            # Log topology information safely
+            try:
+                topology = _mongo_client.topology_description
+                logger.info(f"MongoDB topology type: {topology.topology_type_name}")
+                
+                # Safe server logging
+                for server in topology.server_descriptions().values():
+                    if hasattr(server, 'address'):
+                        logger.info(f"MongoDB server: {server.address}")
+                    else:
+                        logger.warning("Server description missing address attribute")
+            except Exception as log_error:
+                logger.warning(f"Non-critical error logging topology: {str(log_error)}")
+                
+        except Exception as e:
+            logger.error(f"Failed to create MongoDB client: {str(e)}")
+            _mongo_client = None
+            raise
+    return _mongo_client
 
 def require_api_key(f):
     @wraps(f)
@@ -58,7 +74,7 @@ def check_vin():
     if not vin:
         return jsonify({'error': 'No VIN provided'}), 400
         
-    db = get_db()
+    db = get_mongo_client().vin_database
     result = db.vin_records.find_one({'vin_value': vin})
     
     if result:
@@ -76,7 +92,7 @@ def add_vin():
     if not data or 'vin_value' not in data:
         return jsonify({'error': 'No VIN provided'}), 400
         
-    db = get_db()
+    db = get_mongo_client().vin_database
     try:
         result = db.vin_records.update_one(
             {'vin_value': data['vin_value']},
